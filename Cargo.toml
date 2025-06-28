@@ -1,0 +1,11 @@
+[package]
+name = "rayca-util"
+version = "0.1.0"
+edition = "2024"
+authors = ["Antonio Caggiano <info@antoniocaggiano.eu>"]
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+instant = "0.1.13"
+owo-colors = { version = "4.2.*", features = ["supports-colors"] }
