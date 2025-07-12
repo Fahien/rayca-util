@@ -9,3 +9,4 @@ readme = "README.md"
 [dependencies]
 instant = "0.1.13"
 owo-colors = { version = "4.2.*", features = ["supports-colors"] }
+winit = { version = "0.30.*", features = [ "android-native-activity" ] }
