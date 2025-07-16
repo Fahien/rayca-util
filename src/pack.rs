@@ -140,6 +140,13 @@ impl<T> Pack<T> {
         }
     }
 
+    /// Returns a vector of all handles in the pack.
+    pub fn get_handles(&self) -> Vec<Handle<T>> {
+        (0..self.indices.len() as u32)
+            .map(Handle::new)
+            .collect()
+    }
+
     pub fn as_slice(&self) -> &[T] {
         &self.vec
     }
