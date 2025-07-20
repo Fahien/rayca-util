@@ -9,6 +9,8 @@ use std::{
     ops::{Add, AddAssign, Deref, DerefMut},
 };
 
+use serde::*;
+
 /// A handle is a sort of index into a vector of elements of a specific kind.
 /// It is useful when we do not want to keep a reference to an element,
 /// while taking advantage of strong typing to avoid using integers.
@@ -18,7 +20,8 @@ use std::{
 /// - Using a handle after its element has been removed, or after extending a pack, is invalid and may cause panics or incorrect results.
 /// - Handles are only valid for the specific `Pack` instance they were created from.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Handle<T> {
     pub id: u32,
     /// https://stackoverflow.com/a/50201389
@@ -68,6 +71,10 @@ impl<T> Handle<T> {
 
     pub fn as_index(&self) -> usize {
         self.id as usize
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.id == u32::MAX
     }
 }
 
@@ -121,13 +128,16 @@ impl<T> AddAssign<u32> for Handle<T> {
 
 /// A `Pack` is a powerful structure which contains a vector of contiguous elements
 /// and a list of indices to those elements. `Handle`s are used to work with `Pack`s.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize)]
+#[serde(transparent)]
 pub struct Pack<T> {
     /// List of contiguous elements
     vec: Vec<T>,
     /// List of indices to elements
+    #[serde(skip)]
     indices: Vec<u32>,
     /// List of positions to free indices
+    #[serde(skip)]
     free: Vec<u32>,
 }
 
@@ -142,9 +152,7 @@ impl<T> Pack<T> {
 
     /// Returns a vector of all handles in the pack.
     pub fn get_handles(&self) -> Vec<Handle<T>> {
-        (0..self.indices.len() as u32)
-            .map(Handle::new)
-            .collect()
+        (0..self.indices.len() as u32).map(Handle::new).collect()
     }
 
     pub fn as_slice(&self) -> &[T] {
@@ -268,13 +276,54 @@ impl<T> DerefMut for Pack<T> {
     }
 }
 
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Pack<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(PackVisitor::<T>::default())
+    }
+}
+
+struct PackVisitor<T>(std::marker::PhantomData<T>);
+
+impl<T> Default for PackVisitor<T> {
+    fn default() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl<'de, T> de::Visitor<'de> for PackVisitor<T>
+where
+    T: Deserialize<'de>,
+{
+    type Value = Pack<T>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a sequence of elements")
+    }
+
+    fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+    where
+        V: de::SeqAccess<'de>,
+    {
+        let mut pack = Pack::new();
+
+        while let Some(elem) = seq.next_element()? {
+            pack.push(elem);
+        }
+
+        Ok(pack)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{collections::HashMap, thread};
 
     use super::*;
 
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     struct Thing {
         val: u32,
     }
@@ -394,5 +443,30 @@ mod test {
         let handle = Handle::new(50);
         pack.remove(handle);
         assert_eq!(pack.len(), 99);
+    }
+
+    #[test]
+    fn serde_pack() {
+        let mut pack = Pack::new();
+        pack.push(Thing { val: 1 });
+        pack.push(Thing { val: 2 });
+
+        let serialized = serde_json::to_string(&pack).unwrap();
+        let deserialized: Pack<Thing> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.len(), 2);
+        assert_eq!(deserialized.get(Handle::new(0)).unwrap().val, 1);
+        assert_eq!(deserialized.get(Handle::new(1)).unwrap().val, 2);
+    }
+
+    #[test]
+    fn serde_handle() {
+        let handle = Handle::<Thing>::new(42);
+        let serialized = serde_json::to_string(&handle).unwrap();
+        assert_eq!(serialized, "42");
+        let deserialized: Handle<Thing> = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.id, 42);
+        assert!(deserialized.is_valid());
     }
 }
