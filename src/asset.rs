@@ -2,10 +2,10 @@
 // Author: Antonio Caggiano <info@antoniocaggiano.eu>
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 pub struct Asset {
-    pub data: Vec<u8>,
+    data: Vec<u8>,
 }
 
 impl Asset {
@@ -38,6 +38,21 @@ impl Asset {
         let msg = format!("Failed to read asset file: {}", path.display());
         let data = std::fs::read(path).expect(&msg);
         Self { data }
+    }
+
+    pub fn get_bytes(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.data
+    }
+
+    pub fn to_string<'a>(&'a self) -> Cow<'a, str> {
+        match std::str::from_utf8(self.get_bytes()) {
+            Ok(s) => Cow::Borrowed(s),
+            Err(_) => Cow::Owned(String::from_utf8_lossy(self.get_bytes()).into_owned()),
+        }
     }
 }
 
